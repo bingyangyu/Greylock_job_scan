@@ -269,6 +269,22 @@ def main():
         print(json.dumps({"committed": len(pending - seen), "seen_total": len(seen | pending)}))
         return
 
+    if cmd == "audit":
+        # Independent cross-check for the run summary: every new posting (any type) plus every live
+        # posting whose title looks even loosely student-ish, so the sheet can be compared against it.
+        # Read-only: does not touch pending.json or seen.json.
+        jobs, errors = fetch_all()
+        pending = set(json.load(open(pending_path, encoding="utf-8"))) if os.path.exists(pending_path) else set()
+        broad = re.compile(TITLE_RE.pattern + r"|grad|early|junior|entry|resident|university|summer|20(26|27|28)", re.I)
+        pick = lambda j: {k: j[k] for k in ("company", "title", "location", "url", "us")}
+        print(json.dumps({
+            "per_company_counts": {c: sum(j["company"] == c for j in jobs) for c, _ in sources()},
+            "new_since_seen_any_type": [pick(j) for j in jobs if j["key"] and j["key"] not in seen],
+            "live_studentish_us_or_unknown": [pick(j) for j in jobs if broad.search(j["title"]) and j["us"] != "non-us"],
+            "source_errors": errors,
+        }, ensure_ascii=False, indent=1))
+        return
+
     jobs, errors = fetch_all()
     json.dump(sorted({j["key"] for j in jobs if j["key"]}), open(pending_path, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
     if cmd == "baseline":
